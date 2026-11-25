@@ -1,13 +1,14 @@
 // Electron's app: its paths, its life from ready to quit, and the lock that keeps one copy running.
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer, type Server } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { app_info, has_host, host, host_state, runtime_events, stop_host } from "./runtime.ts";
+import { app_info, has_host, host, host_state, process_control, runtime_events, stop_host } from "./runtime.ts";
 import { BrowserWindow, preventable } from "./windows.ts";
 
 // ============================================================================
@@ -90,7 +91,7 @@ let pending_handoff: Promise<void> | null = null;
 
 function lock_paths(): { lock_file: string; socket: string } {
   const user_data = get_path("userData");
-  return { lock_file: join(user_data, "X-WebViewLock"), socket: join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), "x-webview", `${Buffer.from(user_data).toString("base64url").slice(-80)}.sock`) };
+  return { lock_file: join(user_data, "X-WebViewLock"), socket: join(process.env.XDG_RUNTIME_DIR ?? tmpdir(), "x-webview", `${createHash("sha256").update(user_data).digest("hex").slice(0, 16)}.sock`) };
 }
 
 function is_running(pid: number): boolean {
@@ -177,7 +178,7 @@ function start(): Promise<void> {
     },
     (error: unknown) => {
       console.error(error instanceof Error ? error.message : error);
-      process.exit(1);
+      process_control.exit(1);
     },
   );
   return ready_promise;
@@ -186,7 +187,7 @@ function start(): Promise<void> {
 function finish(code: number): void {
   release_single_instance_lock();
   if (has_host()) stop_host();
-  void (pending_handoff ?? Promise.resolve()).then(() => process.exit(code));
+  void (pending_handoff ?? Promise.resolve()).then(() => process_control.exit(code));
 }
 
 function quit(): void {
@@ -251,7 +252,7 @@ export class App extends EventEmitter {
   }
 
   get isPackaged(): boolean {
-    return process.env.X_WEBVIEW_PACKAGED === "1";
+    return Boolean(process.env.X_WEBVIEW_PACKAGED_APP);
   }
 
   override on(event: string | symbol, listener: Listener): this {

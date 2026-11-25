@@ -29,6 +29,13 @@ export function read_app_info(app_path: string): AppInfo {
 export const app_info = read_app_info(process.env.X_WEBVIEW_APP_PATH ?? process.cwd());
 
 // ============================================================================
+// Ending the process
+// ============================================================================
+
+// How quitting ends the process; tests swap it so a quit does not end the test run.
+export const process_control = { exit: (code: number): void => void process.exit(code) };
+
+// ============================================================================
 // Startup timing
 // ============================================================================
 

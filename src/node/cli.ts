@@ -38,14 +38,16 @@ async function run_as_node(arguments_given: string[]): Promise<void> {
   await import(pathToFileURL(script_path).href);
 }
 
+// A packaged app's launcher names its app in X_WEBVIEW_PACKAGED_APP and passes only the app's own arguments, as a packaged Electron app's binary does.
 async function run_app(arguments_given: string[]): Promise<void> {
-  const [target = ".", ...rest] = arguments_given;
+  const packaged_app = process.env.X_WEBVIEW_PACKAGED_APP;
+  const [target = ".", ...rest] = packaged_app ? [packaged_app, ...arguments_given] : arguments_given;
   const entry = find_app(target);
   const launcher = process.env.X_WEBVIEW_LAUNCHER ?? fileURLToPath(import.meta.url);
 
   process.env.X_WEBVIEW_APP_PATH = entry.app_path;
   process.env.X_WEBVIEW_NODE = process.execPath;
-  process.argv = [launcher, target, ...rest];
+  process.argv = packaged_app ? [launcher, ...rest] : [launcher, target, ...rest];
   process.execPath = launcher;
   (process.versions as Record<string, string>).electron = ELECTRON_VERSION;
   Object.assign(process, { type: "browser", resourcesPath: entry.app_path });
@@ -56,9 +58,26 @@ async function run_app(arguments_given: string[]): Promise<void> {
   await import(pathToFileURL(entry.main).href);
 }
 
+// `x-webview --bundle <app or preload>...` bundles preloads at build time beside each preload, so a phone never bundles at startup;
+// `--bundle-into <folder>` puts them in a folder of their own instead, for a package that cannot write beside the app.
+async function bundle_preloads(targets: string[], into?: string): Promise<void> {
+  const { find_preloads, write_into, write_prebuilt } = await import("./preload.ts");
+  for (const target of targets.length ? targets : ["."]) {
+    const path = resolve(target);
+    const preloads = statSync(path).isDirectory() ? await find_preloads(path) : [path];
+    for (const preload of preloads) console.log(into ? await write_into(into, preload) : await write_prebuilt(preload));
+  }
+}
+
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const arguments_given = process.argv.slice(2);
-  const run = process.env.ELECTRON_RUN_AS_NODE ? run_as_node(arguments_given) : run_app(arguments_given);
+  const run = process.env.ELECTRON_RUN_AS_NODE
+    ? run_as_node(arguments_given)
+    : arguments_given[0] === "--bundle"
+      ? bundle_preloads(arguments_given.slice(1))
+      : arguments_given[0] === "--bundle-into"
+        ? bundle_preloads(arguments_given.slice(2), arguments_given[1])
+        : run_app(arguments_given);
   run.catch((error: unknown) => {
     console.error(error);
     process.exit(1);

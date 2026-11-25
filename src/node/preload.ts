@@ -2,12 +2,12 @@
 
 import { createHash } from "node:crypto";
 import { builtinModules } from "node:module";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const page_electron = fileURLToPath(new URL("../page/electron.js", import.meta.url));
+const page_electron = fileURLToPath(new URL(import.meta.url.endsWith(".ts") ? "../page/electron.ts" : "../page/electron.js", import.meta.url));
 const electron_names = new Set(["electron", "electron/renderer", "electron/common"]);
 const node_names = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
 
@@ -61,9 +61,47 @@ export async function bundle_preload(preload_path: string): Promise<string> {
 // Cache
 // ============================================================================
 
-// Bundling is slow on a phone, so each preload is kept by its path, size and change time until it changes.
+// The bundle `x-webview --bundle` writes beside a preload at build time.
+export function prebuilt_path(preload_path: string): string {
+  return `${preload_path}.x-webview.js`;
+}
+
+export async function write_prebuilt(preload_path: string): Promise<string> {
+  const output = prebuilt_path(preload_path);
+  await writeFile(output, await bundle_preload(preload_path));
+  return output;
+}
+
+// A packaged app's preloads cannot have files beside them, so its package keeps their bundles in a folder of their own, named by content.
+export function content_name(source: string): string {
+  return `${createHash("sha256").update(source).digest("hex")}.js`;
+}
+
+export async function write_into(folder: string, preload_path: string): Promise<string> {
+  await mkdir(folder, { recursive: true });
+  const output = join(folder, content_name(await readFile(preload_path, "utf8")));
+  await writeFile(output, await bundle_preload(preload_path));
+  return output;
+}
+
+// The preloads of an app folder: electron-vite's out/preload when there is one, otherwise the scripts in the folder itself.
+export async function find_preloads(folder: string): Promise<string[]> {
+  const preload_folder = join(folder, "out", "preload");
+  const searched = await stat(preload_folder).then((details) => (details.isDirectory() ? preload_folder : folder), () => folder);
+  const names = await readdir(searched);
+  return names.filter((name) => /\.(c|m)?js$/.test(name) && !name.endsWith(".x-webview.js")).map((name) => join(searched, name));
+}
+
+// Bundling is slow on a phone, so a build-time bundle is used when it is current, and otherwise each bundle is cached by the preload's path, size and change time.
 export async function cached_preload(preload_path: string, cache = cache_folder()): Promise<string> {
   const details = await stat(preload_path);
+  const prebuilt = await stat(prebuilt_path(preload_path)).catch(() => null);
+  if (prebuilt && prebuilt.mtimeMs >= details.mtimeMs) return readFile(prebuilt_path(preload_path), "utf8");
+  const packaged_folder = process.env.X_WEBVIEW_PRELOADS;
+  if (packaged_folder) {
+    const packaged = await readFile(join(packaged_folder, content_name(await readFile(preload_path, "utf8"))), "utf8").catch(() => null);
+    if (packaged !== null) return packaged;
+  }
   const runtime = await stat(page_electron);
   const key = createHash("sha256").update(`${preload_path}\n${details.size}\n${details.mtimeMs}\n${runtime.mtimeMs}`).digest("hex");
   const cache_file = join(cache, `${key}.js`);

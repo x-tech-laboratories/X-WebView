@@ -1,0 +1,98 @@
+{
+  description = "X-WebView — runs Electron apps on the system WebKit";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
+      let
+        pkgs = import nixpkgs { inherit system; };
+        nodejs = pkgs.nodejs_24;
+
+        x_webview = pkgs.buildNpmPackage {
+          pname = "x-webview";
+          version = (builtins.fromJSON (builtins.readFile ./package.json)).version;
+          src = self;
+
+          # Read from package-lock.json, so there is no deps hash to keep in step with it.
+          npmDeps = pkgs.importNpmLock { npmRoot = ./.; };
+          npmConfigHook = pkgs.importNpmLock.npmConfigHook;
+          inherit nodejs;
+
+          nativeBuildInputs = with pkgs; [ makeWrapper wrapGAppsHook3 gobject-introspection ];
+
+          # The window host's libraries, TLS for WebKit's network process, and the GStreamer plugins pages play media with.
+          buildInputs = with pkgs; [
+            gjs
+            gtk3
+            webkitgtk_4_1
+            glib-networking
+            gsettings-desktop-schemas
+            gst_all_1.gstreamer
+            gst_all_1.gst-plugins-base
+            gst_all_1.gst-plugins-good
+            gst_all_1.gst-libav
+          ];
+
+          buildPhase = ''
+            runHook preBuild
+            npm run build
+            runHook postBuild
+          '';
+
+          # The wrapper stands where the electron binary would, so the app's daemon and relaunches run through it too.
+          installPhase = ''
+            runHook preInstall
+            npm prune --omit=dev --ignore-scripts
+            mkdir -p $out/lib/x-webview
+            cp -r dist node_modules package.json $out/lib/x-webview/
+            makeWrapper ${nodejs}/bin/node $out/bin/x-webview \
+              --add-flags $out/lib/x-webview/dist/node/cli.js \
+              --set X_WEBVIEW_GJS ${pkgs.gjs}/bin/gjs \
+              --set X_WEBVIEW_LAUNCHER $out/bin/x-webview
+            runHook postInstall
+          '';
+
+          # The GTK wrapping is added to the one wrapper rather than layered as a second script.
+          dontWrapGApps = true;
+          postFixup = ''
+            wrapProgram $out/bin/x-webview "''${gappsWrapperArgs[@]}"
+          '';
+
+          meta = {
+            description = "Runs Electron apps on the system WebKit";
+            license = pkgs.lib.licenses.gpl3Plus;
+            mainProgram = "x-webview";
+            platforms = [ "x86_64-linux" "aarch64-linux" ];
+          };
+        };
+
+        # An Electron app packaged to run on X-WebView: `app` is a folder holding the built app, such as an app package's lib/<name>.
+        wrap_app = { name, app, desktop_item ? null }:
+          pkgs.runCommand name {
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            meta.mainProgram = name;
+          } ''
+            mkdir -p $out/bin $out/share/x-webview
+            ${x_webview}/bin/x-webview --bundle-into $out/share/x-webview/preloads ${app}
+            makeWrapper ${x_webview}/bin/x-webview $out/bin/${name} \
+              --set X_WEBVIEW_PACKAGED_APP ${app} \
+              --set X_WEBVIEW_LAUNCHER $out/bin/${name} \
+              --set X_WEBVIEW_PRELOADS $out/share/x-webview/preloads
+            ${pkgs.lib.optionalString (desktop_item != null) "mkdir -p $out/share/applications && cp ${desktop_item}/share/applications/* $out/share/applications/"}
+          '';
+      in
+      {
+        packages.default = x_webview;
+
+        lib = { inherit wrap_app; };
+
+        devShells.default = pkgs.mkShell {
+          packages = [ nodejs pkgs.gjs ];
+          inputsFrom = [ x_webview ];
+        };
+      });
+}

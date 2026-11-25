@@ -35,7 +35,8 @@ export function preventable(extra: Record<string, unknown> = {}): PreventableEve
 // ipcMain
 // ============================================================================
 
-type InvokeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
+// Handlers name their own argument types, as Electron lets them.
+type InvokeHandler = (event: IpcMainInvokeEvent, ...args: never[]) => unknown;
 
 export interface IpcMainInvokeEvent {
   sender: WebContents;
@@ -85,7 +86,7 @@ export async function answer_invoke(contents: WebContents, channel: string, payl
   const handler = ipcMain.handler(channel);
   if (!handler) return { ok: false, error: `Error: No handler registered for '${channel}'` };
   try {
-    const result = await handler(invoke_event(contents, url), ...(decode(payload) as unknown[]));
+    const result = await handler(invoke_event(contents, url), ...(decode(payload) as never[]));
     return { ok: true, payload: encode(result) };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? `${error.name}: ${error.message}` : String(error) };
@@ -277,6 +278,11 @@ const all_windows = new Map<number, BrowserWindow>();
 let next_window_id = 1;
 let focused_window: BrowserWindow | null = null;
 
+function focus_moved(window: BrowserWindow, focused: boolean): void {
+  if (focused) focused_window = window;
+  else if (focused_window === window) focused_window = null;
+}
+
 function icon_path(icon: BrowserWindowOptions["icon"]): string | undefined {
   if (typeof icon === "string") return icon;
   return icon?.path;
@@ -390,8 +396,7 @@ export class BrowserWindow extends EventEmitter {
         return;
       case "focus":
         mirror.focused = event.focused;
-        if (event.focused) focused_window = this;
-        else if (focused_window === this) focused_window = null;
+        focus_moved(this, event.focused);
         this.emit(event.focused ? "focus" : "blur");
         runtime_events.emit(event.focused ? "window_focus" : "window_blur", this);
         return;
