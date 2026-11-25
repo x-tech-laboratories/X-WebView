@@ -21,8 +21,7 @@ export function cache_folder(environment: NodeJS.ProcessEnv = process.env): stri
 
 // esbuild-wasm starts a node found by name, so the Node that runs X-WebView is put first on the path while it starts.
 function with_own_node_on_path<Result>(start: () => Result): Result {
-  const own_node = process.env.X_WEBVIEW_NODE;
-  if (!own_node) return start();
+  const own_node = process.env.X_WEBVIEW_NODE ?? process.execPath;
   const saved_path = process.env.PATH;
   process.env.PATH = [dirname(own_node), saved_path].filter(Boolean).join(delimiter);
   try {
