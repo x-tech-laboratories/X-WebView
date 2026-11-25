@@ -71,8 +71,14 @@
         };
 
         # An Electron app packaged to run on X-WebView: `app` is a folder holding the built app, such as an app package's lib/<name>.
-        # The folder is copied rather than referenced, so the app package's own Electron is not carried along.
-        wrap_app = { name, app, desktop_item ? null }:
+        # The folder is copied rather than referenced, so the app package's own Electron is not carried along. `share` is a
+        # package whose desktop files and icons are copied, `environment` adds variables and `path` adds tools to the PATH.
+        wrap_app = { name, app, share ? null, environment ? { }, path ? [ ] }:
+          let
+            inherit (pkgs) lib;
+            environment_flags = lib.concatStringsSep " " (lib.mapAttrsToList (key: value: "--set ${key} ${lib.escapeShellArg value}") environment);
+            path_flags = lib.optionalString (path != [ ]) "--prefix PATH : ${lib.makeBinPath path}";
+          in
           pkgs.runCommand name {
             nativeBuildInputs = [ pkgs.makeWrapper ];
             meta.mainProgram = name;
@@ -83,8 +89,13 @@
             makeWrapper ${x_webview}/bin/x-webview $out/bin/${name} \
               --set X_WEBVIEW_PACKAGED_APP $out/lib/${name} \
               --set X_WEBVIEW_LAUNCHER $out/bin/${name} \
-              --set X_WEBVIEW_PRELOADS $out/share/x-webview/preloads
-            ${pkgs.lib.optionalString (desktop_item != null) "mkdir -p $out/share/applications && cp ${desktop_item}/share/applications/* $out/share/applications/"}
+              --set X_WEBVIEW_PRELOADS $out/share/x-webview/preloads \
+              ${environment_flags} ${path_flags}
+            ${lib.optionalString (share != null) ''
+              for folder in applications icons; do
+                if [ -d ${share}/share/$folder ]; then cp -r --no-preserve=mode ${share}/share/$folder $out/share/; fi
+              done
+            ''}
           '';
       in
       {
