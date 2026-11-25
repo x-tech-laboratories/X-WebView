@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>sample</title></head>
+<body>
+<script type="module">
+  const report = { has_api: typeof window.sample === "object" };
+  window.sample.on_hello(async (message) => {
+    report.hello = { greeting: message.greeting, when_is_date: message.when instanceof Date };
+    report.sum = await window.sample.add(2, 3);
+    report.date = await window.sample.date(new Date(2030, 0, 1));
+    try { await window.sample.fail(); } catch (error) { report.failure = error.message; }
+    document.title = "sample done";
+    window.sample.done(report);
+  });
+</script>
+</body></html>

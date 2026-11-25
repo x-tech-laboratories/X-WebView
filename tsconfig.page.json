@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.page.tsbuildinfo",
+    "lib": ["ES2024", "DOM"],
+    "types": [],
+  },
+  "include": ["src/page", "src/shared/codec.ts"]
+}
