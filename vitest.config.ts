@@ -8,9 +8,9 @@ export default defineConfig({
       include: ["src/node/**/*.ts", "src/shared/**/*.ts", "src/page/**/*.ts"],
       thresholds: {
         autoUpdate: (new_threshold) => Math.floor(new_threshold),
-        lines: 70,
-        statements: 68,
-        functions: 45,
+        lines: 74,
+        statements: 71,
+        functions: 53,
         branches: 63,
       },
     },

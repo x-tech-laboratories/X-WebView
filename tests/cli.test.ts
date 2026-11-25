@@ -53,3 +53,24 @@ describe("x-webview command", () => {
     expect(await readFile(stdout.trim(), "utf8")).toContain("exposeInMainWorld");
   });
 });
+
+describe("x-webview --bundle-into", () => {
+  it("bundles an app's preloads into a folder named by content", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "x-webview-into-"));
+    await writeFile(join(folder, "preload.js"), 'import { ipcRenderer } from "electron"; globalThis.probe = ipcRenderer;');
+
+    const { stdout } = await run(process.execPath, [cli, "--bundle-into", join(folder, "bundles"), join(folder, "preload.js")]);
+
+    expect(stdout.trim()).toMatch(new RegExp(`^${join(folder, "bundles")}/[0-9a-f]{64}\\.js$`));
+  });
+
+  it("runs a packaged app named by its launcher, with only the app's own arguments", async () => {
+    const folder = await mkdtemp(join(tmpdir(), "x-webview-packaged-"));
+    await writeFile(join(folder, "package.json"), JSON.stringify({ name: "packaged", main: "main.mjs" }));
+    await writeFile(join(folder, "main.mjs"), 'import { app } from "electron"; console.log(JSON.stringify([app.isPackaged, process.argv.slice(1)])); app.exit(0);');
+
+    const { stdout } = await run(process.execPath, [cli, "--open"], { env: { ...process.env, X_WEBVIEW_PACKAGED_APP: folder } });
+
+    expect(JSON.parse(stdout)).toEqual([true, ["--open"]]);
+  });
+});

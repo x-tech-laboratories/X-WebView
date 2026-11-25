@@ -255,3 +255,51 @@ describe("quitting", () => {
     expect((await host_messages()).at(-1)?.type).toBe("quit");
   });
 });
+
+describe("inert parts", () => {
+  it("keeps Electron's shape for sessions, protocols, shortcuts, updates and storage", async () => {
+    const { autoUpdater, globalShortcut, protocol, safeStorage, session, systemPreferences } = electron;
+
+    expect(globalShortcut.register()).toBe(false);
+    expect(protocol.registerFileProtocol()).toBe(false);
+    expect(session.fromPartition()).toBe(session.defaultSession);
+    await expect(session.defaultSession.clearCache()).resolves.toBeUndefined();
+    expect(autoUpdater.getFeedURL()).toBe("");
+    expect(systemPreferences.getAnimationSettings().prefersReducedMotion).toBe(false);
+    expect(safeStorage.isEncryptionAvailable()).toBe(false);
+    expect(() => safeStorage.encryptString()).toThrow("safeStorage");
+    expect(app.getLoginItemSettings()).toEqual({ openAtLogin: false });
+    expect(app.setAsDefaultProtocolClient()).toBe(false);
+    expect(app.getGPUFeatureStatus()).toEqual({ gpu_compositing: "enabled" });
+    expect(app.getLocaleCountryCode()).toBeTypeOf("string");
+  });
+
+  it("answers window questions a Wayland phone window has fixed answers to", () => {
+    const window = new BrowserWindow({ show: false, x: 3, y: 4, width: 300, height: 200 });
+
+    window.setTitle("Fixed");
+    window.setBackgroundColor("#123456");
+    window.setSize(320, 240);
+    window.setBounds({ width: 330 });
+    window.setMinimumSize(100, 100);
+    window.maximize();
+    window.unmaximize();
+    window.minimize();
+    window.restore();
+    window.setFullScreen(true);
+    window.hide();
+
+    expect(window.getTitle()).toBe("Fixed");
+    expect(window.getBackgroundColor()).toBe("#123456");
+    expect(window.getPosition()).toEqual([3, 4]);
+    expect(window.getSize()).toEqual([300, 200]);
+    expect(window.getContentSize()).toEqual([300, 200]);
+    expect(window.getContentBounds()).toEqual({ x: 3, y: 4, width: 300, height: 200 });
+    expect(window.isVisible()).toBe(false);
+    expect(window.isAlwaysOnTop()).toBe(false);
+    expect(window.isResizable()).toBe(true);
+    expect(window.getParentWindow()).toBeNull();
+    expect(window.getChildWindows()).toEqual([]);
+    window.destroy();
+  });
+});
