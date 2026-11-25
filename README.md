@@ -61,8 +61,9 @@ Measured on a PinePhone, frames per second:
 ## Packaging with Nix
 
 The flake's `packages.default` is `x-webview` with GJS, GTK 3, WebKitGTK and GStreamer wired in, for `x86_64-linux` and
-`aarch64-linux`. `lib.<system>.wrap_app { name; app; }` turns a built Electron app folder into a launcher that runs it on
-X-WebView, with its preloads bundled at build time.
+`aarch64-linux`. `lib.<system>.wrap_app { name; app; share; environment; path; }` turns a built Electron app folder into a launcher that
+runs it on X-WebView, with its preloads bundled at build time. `share` names a package whose desktop files and icons come
+along, `environment` sets variables for the app and `path` puts tools on its PATH.
 
 ## Settings
 
