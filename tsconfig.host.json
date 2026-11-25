@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.host.tsbuildinfo",
+    "lib": ["ES2024"],
+    "types": ["@girs/gjs", "@girs/gjs/dom", "@girs/gtk-3.0", "@girs/webkit2-4.1", "@girs/giounix-2.0"],
+  },
+  "include": ["src/host", "src/shared/protocol.ts"]
+}
